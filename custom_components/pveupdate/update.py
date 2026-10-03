@@ -48,7 +48,8 @@ class GuestUpdate(GuestEntity, UpdateEntity):
 
     @property
     def installed_version(self) -> str | None:
-        return self.guest.get("app_installed") or "current"
+        g = self.guest
+        return g.get("app_installed") or g.get("os") or "current"
 
     @property
     def latest_version(self) -> str | None:
@@ -88,6 +89,7 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             "guest_id": self.gid,
             "guest_type": g.get("type"),
             "state": g.get("state"),
+            "os": g.get("os"),
             "packages": g.get("packages", 0),
             "reboot_required": g.get("reboot_required", False),
             "checked_at": g.get("checked_at"),

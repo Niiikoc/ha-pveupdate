@@ -110,9 +110,15 @@ async def test_install(hass: HomeAssistant, aioclient_mock):
 
 
 async def test_in_progress(hass: HomeAssistant, aioclient_mock):
-    await setup(hass, aioclient_mock, status(running=True, activity="updating", updating="101", queue=["105"]))
-    assert hass.states.get("update.mqtt").attributes["in_progress"] is True
-    assert hass.states.get("update.zigbee2mqtt").attributes["in_progress"] is True
+    await setup(hass, aioclient_mock, status(running=True, activity="updating", updating="101", queue=["105"],
+                                             progress=45, step="os"))
+    m = hass.states.get("update.mqtt")
+    assert m.attributes["in_progress"] is True
+    assert m.attributes["update_percentage"] == 45
+    assert m.attributes["update_step"] == "os"
+    z = hass.states.get("update.zigbee2mqtt")
+    assert z.attributes["in_progress"] is True
+    assert z.attributes["update_percentage"] is None  # queued
     assert hass.states.get("update.mariadb").attributes["in_progress"] is False
     assert hass.states.get("sensor.proxmox_pve_local_activity").state == "updating"
 

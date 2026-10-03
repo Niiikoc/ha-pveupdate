@@ -150,3 +150,12 @@ async def test_guest_pictures(hass: HomeAssistant, aioclient_mock):
     assert hass.states.get("update.mqtt").attributes["entity_picture"] == f"{ICONS}/debian.png"
     # Nothing found: the integration's own icon.
     assert hass.states.get("update.mariadb").attributes["entity_picture"].endswith("/pveupdate/icon.png")
+
+
+async def test_os_point_release(hass: HomeAssistant, aioclient_mock):
+    st = status()
+    st["guests"]["101"]["os_latest"] = "Debian 12.12"
+    await setup(hass, aioclient_mock, st)
+    m = hass.states.get("update.mqtt")
+    assert m.attributes["installed_version"] == "Debian 12.11"
+    assert m.attributes["latest_version"] == "Debian 12.12 + 3 packages"

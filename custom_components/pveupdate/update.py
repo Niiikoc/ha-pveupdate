@@ -105,6 +105,14 @@ class GuestUpdate(GuestEntity, UpdateEntity):
         return data.get("updating") == self.gid or self.gid in (data.get("queue") or [])
 
     @property
+    def update_percentage(self) -> int | None:
+        """Progress of this guest's update; None while queued (or on older hosts)."""
+        data = self.coordinator.data or {}
+        if data.get("updating") != self.gid:
+            return None
+        return data.get("progress")
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         g = self.guest
         return {
@@ -119,6 +127,7 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             "last_update": g.get("last_update"),
             "last_result": g.get("last_result"),
             "last_detail": g.get("last_detail"),
+            "update_step": (self.coordinator.data or {}).get("step") if self.in_progress else None,
         }
 
     async def async_release_notes(self) -> str | None:

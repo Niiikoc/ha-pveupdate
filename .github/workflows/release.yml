@@ -1,10 +1,11 @@
 name: Release
 
-# Publishing a release on GitHub (tag vX.Y.Z) runs the checks again and
-# attaches the integration as a zip. HACS installs from these releases.
+# Every push to master whose manifest version has no release yet runs the
+# tests and publishes one: tag vX.Y.Z, generated notes, pveupdate.zip attached.
+# HACS offers these releases. Merges that don't change the version publish nothing.
 on:
-  release:
-    types: [published]
+  push:
+    branches: [master]
 
 permissions:
   contents: write
@@ -14,24 +15,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Tag matches manifest version
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          version=$(python3 -c 'import json; print(json.load(open("custom_components/pveupdate/manifest.json"))["version"])')
-          if [ "$tag" != "$version" ]; then
-            echo "::error::Release tag $GITHUB_REF_NAME does not match manifest version $version"
-            exit 1
-          fi
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: pip install -r requirements_test.txt
-      - run: pytest
-      - name: Attach zip
+      - name: Read manifest version
+        id: version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd custom_components/pveupdate
-          zip -r ../../pveupdate.zip . -x '__pycache__/*'
-          cd ../..
-          gh release upload "$GITHUB_REF_NAME" pveupdate.zip --clobber
+          version=$(python3 -c 'import json; print(json.load(open("custom_components/pveupdate/manifest.json"))["version"])')
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released, nothing to do"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.version.outputs.new == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - if: steps.version.outputs.new == 'true'
+        run: pip install -r requirements_test.txt && pytest
+      - if: steps.version.outputs.new == 'true'
+        name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd custom_components/pveupdate && zip -r ../../pveupdate.zip . -x '__pycache__/*')
+          gh release create "${{ steps.version.outputs.tag }}" --target "$GITHUB_SHA" --generate-notes pveupdate.zip

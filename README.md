@@ -22,14 +22,14 @@ It sits next to the regular Proxmox VE integrations; it doesn't replace them. Th
 ```bash
 base=https://raw.githubusercontent.com/Niiikoc/Pveupdate/main
 curl -fsSL $base/pveupdate.py -o /usr/local/bin/pveupdate && chmod +x /usr/local/bin/pveupdate
-pveupdate track                      # choose the guests to manage
+pveupdate track                      # choose the guests to manage (or later from Home Assistant)
 
 curl -fsSL $base/systemd/pveupdate-serve.service -o /etc/systemd/system/pveupdate-serve.service
 systemctl daemon-reload && systemctl enable --now pveupdate-serve
 pveupdate token                      # copy this for step 3
 ```
 
-The API listens on port 8765 and requires the token for every request. It only accepts these actions: read status, start a check, and update tracked guests.
+The API listens on port 8765 and requires the token for every request. It only accepts these actions: read status, list the node's guests, choose which are tracked, start a check, and update tracked guests.
 
 ### 2. Install the integration
 
@@ -41,7 +41,10 @@ Manual install: copy `custom_components/pveupdate` into your `/config/custom_com
 
 Settings → Devices & services → **Add integration** → *Proxmox Guest Updates* → enter the host's IP, port `8765` and the token.
 
-Options (⚙ on the integration): how often to check for updates, in hours (0 = only when you press *Check for updates*).
+Options (⚙ on the integration):
+
+- **Guests to track**: tick the LXCs and VMs pveupdate should manage. Newly ticked guests are checked right away; unticked ones are removed from Home Assistant. Needs pveupdate 0.6.0 or later on the host.
+- How often to check for updates, in hours (0 = only when you press *Check for updates*).
 
 ## Example: notify when updates are available
 

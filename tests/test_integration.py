@@ -165,3 +165,57 @@ async def test_os_point_release(hass: HomeAssistant, aioclient_mock):
     m = hass.states.get("update.mqtt")
     assert m.attributes["installed_version"] == "Debian 12.11"
     assert m.attributes["latest_version"] == "Debian 12.12 + 3 packages"
+
+
+GUESTS = [
+    {"id": "101", "type": "lxc", "name": "mqtt", "status": "running", "tracked": True},
+    {"id": "102", "type": "lxc", "name": "mariadb", "status": "running", "tracked": True},
+    {"id": "105", "type": "lxc", "name": "zigbee2mqtt", "status": "running", "tracked": True},
+    {"id": "200", "type": "vm", "name": "haos", "status": "running", "tracked": False},
+]
+
+
+async def test_options_choose_guests(hass: HomeAssistant, aioclient_mock):
+    entry = await setup(hass, aioclient_mock)
+    assert hass.states.get("update.mariadb")
+    aioclient_mock.get(f"{BASE}/guests", json={"guests": GUESTS})
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert "guests" in result["data_schema"].schema
+
+    # Untrack mariadb, track the haos VM. The host then reports the new set.
+    st = status()
+    st["guests"].pop("102")
+    st["guests"]["200"] = {"name": "haos", "type": "vm", "state": "unchecked", "packages": 0, "app": None,
+                           "app_installed": None, "app_latest": None, "app_update": False, "pending": False,
+                           "package_names": [], "reboot_required": False}
+    aioclient_mock.clear_requests()
+    mock_icons(aioclient_mock)
+    aioclient_mock.head(f"{ICONS}/home-assistant.png", status=200)
+    aioclient_mock.get(f"{BASE}/guests", json={"guests": GUESTS})
+    aioclient_mock.get(f"{BASE}/status", json=st)
+    aioclient_mock.post(f"{BASE}/track", json={"tracked": ["101", "105", "200"]})
+    aioclient_mock.post(f"{BASE}/check", status=202, json={"started": "check"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"guests": ["101", "105", "200"], "check_interval": 6}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {"check_interval": 6}
+    posts = {str(c[1]).rsplit("/", 1)[-1]: c[2] for c in aioclient_mock.mock_calls if c[0] == "POST"}
+    assert posts["track"] == {"guests": ["101", "105", "200"]}
+    assert "check" in posts
+    assert hass.states.get("update.haos")
+    assert hass.states.get("update.mariadb") is None
+
+
+async def test_options_old_host(hass: HomeAssistant, aioclient_mock):
+    """A pveupdate without /api/guests still lets you change the interval."""
+    entry = await setup(hass, aioclient_mock)
+    aioclient_mock.get(f"{BASE}/guests", status=404, json={"error": "not found"})
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["errors"] == {"base": "cannot_list_guests"}
+    assert "guests" not in result["data_schema"].schema
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"check_interval": 12})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {"check_interval": 12}

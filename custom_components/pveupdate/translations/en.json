@@ -13,7 +13,9 @@
       "reauth_confirm": {
         "title": "New pveupdate token",
         "description": "The token was rejected. Get the current one on the host with `pveupdate token`.",
-        "data": { "token": "API token" }
+        "data": {
+          "token": "API token"
+        }
       }
     },
     "error": {
@@ -31,22 +33,41 @@
       "init": {
         "title": "Proxmox Guest Updates options",
         "data": {
-          "check_interval": "Check for updates every (hours, 0 = never)"
-        }
+          "check_interval": "Check for updates every (hours, 0 = never)",
+          "guests": "Guests to track"
+        },
+        "description": "Choose the LXCs and VMs pveupdate manages. Untracked guests are removed from Home Assistant."
       }
+    },
+    "error": {
+      "cannot_list_guests": "Could not get the guest list from pveupdate. Update pveupdate on the host to 0.6.0 or later, and check `pveupdate serve` is running.",
+      "busy": "A check or update is running. Try again when it finishes.",
+      "unknown": "Unexpected error."
     }
   },
   "entity": {
     "button": {
-      "check": { "name": "Check for updates" },
-      "update_pending": { "name": "Update all pending" }
+      "check": {
+        "name": "Check for updates"
+      },
+      "update_pending": {
+        "name": "Update all pending"
+      }
     },
     "sensor": {
-      "pending_guests": { "name": "Guests with updates" },
-      "last_check": { "name": "Last check" },
+      "pending_guests": {
+        "name": "Guests with updates"
+      },
+      "last_check": {
+        "name": "Last check"
+      },
       "activity": {
         "name": "Activity",
-        "state": { "idle": "Idle", "checking": "Checking", "updating": "Updating" }
+        "state": {
+          "idle": "Idle",
+          "checking": "Checking",
+          "updating": "Updating"
+        }
       }
     }
   }

@@ -72,8 +72,8 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             parts.append("reboot required")
         if g.get("state") == "error":
             parts.append(f"last check failed: {g.get('error', '')}")
-        if g.get("last_result") == "failed":
-            parts.append(f"last update failed: {g.get('last_detail', '')}")
+        if g.get("last_result") in ("failed", "skipped"):
+            parts.append(f"last update {g['last_result']}: {g.get('last_detail') or 'unknown reason'}")
         return ". ".join(parts)[:255] or None
 
     @property
@@ -93,6 +93,7 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             "checked_at": g.get("checked_at"),
             "last_update": g.get("last_update"),
             "last_result": g.get("last_result"),
+            "last_detail": g.get("last_detail"),
         }
 
     async def async_release_notes(self) -> str | None:

@@ -20,11 +20,11 @@ It sits next to the regular Proxmox VE integrations; it doesn't replace them. Th
 ### 1. On the Proxmox host
 
 ```bash
-base=https://raw.githubusercontent.com/Niiikoc/Pveupdate/main
+base=https://github.com/Niiikoc/Pveupdate/releases/latest/download
 curl -fsSL $base/pveupdate.py -o /usr/local/bin/pveupdate && chmod +x /usr/local/bin/pveupdate
 pveupdate track                      # choose the guests to manage (or later from Home Assistant)
 
-curl -fsSL $base/systemd/pveupdate-serve.service -o /etc/systemd/system/pveupdate-serve.service
+curl -fsSL $base/pveupdate-serve.service -o /etc/systemd/system/pveupdate-serve.service
 systemctl daemon-reload && systemctl enable --now pveupdate-serve
 pveupdate token                      # copy this for step 3
 ```

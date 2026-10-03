@@ -62,4 +62,5 @@ automation:
 
 - The token is sent over plain HTTP, so keep port 8765 on your LAN (don't port-forward it). Rotate it with `pveupdate token --new`; Home Assistant will ask for the new one.
 - Update output goes to `/var/log/pveupdate.log` on the host.
-- If a snapshot fails (storage without snapshot support), that guest is skipped. Turn snapshots off for it on the host with `pveupdate set <id> --snapshot off`.
+- If a guest can't be snapshotted (storage without snapshot support), pveupdate takes a `vzdump` backup instead and then updates. If that fails too, the guest is skipped and the update entity shows why.
+- Guests without a readable app version show their OS version (e.g. *Debian 12.11*) as the installed version. This needs pveupdate 0.4.0 or newer on the host.

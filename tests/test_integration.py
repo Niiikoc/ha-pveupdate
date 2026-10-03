@@ -24,7 +24,7 @@ def status(**over):
         "pending_guests": 2,
         "pending_ids": "101 105",
         "guests": {
-            "101": {"name": "mqtt", "type": "lxc", "state": "ok", "packages": 3, "app": None,
+            "101": {"name": "mqtt", "type": "lxc", "state": "ok", "os": "Debian 12.11", "packages": 3, "app": None,
                     "app_installed": None, "app_latest": None, "app_update": False, "pending": True,
                     "package_names": ["libc6", "openssl", "mosquitto"], "reboot_required": False},
             "102": {"name": "mariadb", "type": "lxc", "state": "ok", "packages": 0, "app": None,
@@ -81,8 +81,11 @@ async def test_entities(hass: HomeAssistant, aioclient_mock):
     assert "2.9.1 → 2.14.2" in z.attributes["release_summary"]
     m = hass.states.get("update.mqtt")
     assert m.state == "on"
-    assert m.attributes["latest_version"] == "current + 3 packages"
-    assert hass.states.get("update.mariadb").state == "off"
+    assert m.attributes["installed_version"] == "Debian 12.11"
+    assert m.attributes["latest_version"] == "Debian 12.11 + 3 packages"
+    mdb = hass.states.get("update.mariadb")
+    assert mdb.state == "off"
+    assert mdb.attributes["installed_version"] == "current"  # older pveupdate without `os`
     assert hass.states.get("sensor.proxmox_pve_local_guests_with_updates").state == "2"
     assert hass.states.get("sensor.proxmox_pve_local_activity").state == "idle"
 

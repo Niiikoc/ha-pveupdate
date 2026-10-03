@@ -77,4 +77,4 @@ Replace `192_168_1_10` with your host as it appears in the sensor's entity ID.
 
 ## Contributing
 
-Issues and pull requests are welcome. Changes reach `master` only through a pull request that passes the checks and is merged by the maintainer, and users only get them once they're in a release.
+Issues and pull requests are welcome. Changes reach `master` only through a pull request that passes the checks and is merged by the maintainer, and users only get them once they're in a release. A release is published automatically when a merge changes the version in `manifest.json`.

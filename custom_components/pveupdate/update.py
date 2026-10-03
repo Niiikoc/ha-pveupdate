@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import PveUpdateConfigEntry
 from .api import Busy, PveUpdateError
 from .entity import GuestEntity
+from .icons import async_guest_picture
 
 
 async def async_setup_entry(
@@ -41,6 +42,22 @@ class GuestUpdate(GuestEntity, UpdateEntity):
 
     def __init__(self, coordinator, gid: str) -> None:
         super().__init__(coordinator, gid, "update")
+        self._picture: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Looked up in the background so a slow or offline CDN never delays setup.
+        self.hass.async_create_task(self._async_load_picture())
+
+    async def _async_load_picture(self) -> None:
+        self._picture = await async_guest_picture(self.hass, self.guest)
+        if self._picture:
+            self.async_write_ha_state()
+
+    @property
+    def entity_picture(self) -> str | None:
+        # Falls back to the integration's own icon.
+        return self._picture or super().entity_picture
 
     @property
     def title(self) -> str | None:

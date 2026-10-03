@@ -62,5 +62,6 @@ automation:
 
 - The token is sent over plain HTTP, so keep port 8765 on your LAN (don't port-forward it). Rotate it with `pveupdate token --new`; Home Assistant will ask for the new one.
 - Update output goes to `/var/log/pveupdate.log` on the host.
+- Each guest's picture comes from the [selfh.st icon set](https://selfh.st/icons), matched by app or guest name (e.g. *zigbee2mqtt*, *mariadb*), then by OS (*debian*). Guests with no match use the integration's icon, which needs Home Assistant 2026.3 or newer.
 - If a guest can't be snapshotted (storage without snapshot support), pveupdate takes a `vzdump` backup instead and then updates. If that fails too, the guest is skipped and the update entity shows why.
 - Guests without a readable app version show their OS version (e.g. *Debian 12.11*) as the installed version. This needs pveupdate 0.4.0 or newer on the host.

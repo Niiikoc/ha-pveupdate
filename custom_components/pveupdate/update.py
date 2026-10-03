@@ -74,7 +74,12 @@ class GuestUpdate(GuestEntity, UpdateEntity):
         installed = self.installed_version
         if not g.get("pending"):
             return installed
-        base = g.get("app_latest") if g.get("app_update") else installed
+        if g.get("app_update"):
+            base = g.get("app_latest")
+        elif not g.get("app_installed") and g.get("os_latest"):
+            base = g["os_latest"]  # e.g. Debian 13.1 -> 13.2
+        else:
+            base = installed
         n = g.get("packages", 0)
         return f"{base} + {n} packages" if n else base
 
@@ -107,6 +112,7 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             "guest_type": g.get("type"),
             "state": g.get("state"),
             "os": g.get("os"),
+            "os_latest": g.get("os_latest"),
             "packages": g.get("packages", 0),
             "reboot_required": g.get("reboot_required", False),
             "checked_at": g.get("checked_at"),

@@ -118,3 +118,12 @@ async def test_buttons(hass: HomeAssistant, aioclient_mock):
     )
     posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
     assert posts[-1][2] == {"guests": "pending"}
+
+
+async def test_skip_reason_shown(hass: HomeAssistant, aioclient_mock):
+    st = status()
+    st["guests"]["101"].update(last_result="skipped", last_detail="no snapshot (snapshot feature is not available) or backup (no storage)")
+    await setup(hass, aioclient_mock, st)
+    m = hass.states.get("update.mqtt")
+    assert "last update skipped: no snapshot" in m.attributes["release_summary"]
+    assert m.attributes["last_detail"].startswith("no snapshot")

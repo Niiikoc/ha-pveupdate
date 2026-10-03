@@ -1,0 +1,53 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to pveupdate",
+        "description": "Run `pveupdate serve` on your Proxmox host and get the token with `pveupdate token`.",
+        "data": {
+          "host": "Proxmox host",
+          "port": "Port",
+          "token": "API token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "New pveupdate token",
+        "description": "The token was rejected. Get the current one on the host with `pveupdate token`.",
+        "data": { "token": "API token" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach pveupdate on that host and port. Is `pveupdate serve` running?",
+      "invalid_auth": "The token was rejected.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This host is already set up.",
+      "reauth_successful": "Token updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Proxmox Guest Updates options",
+        "data": {
+          "check_interval": "Check for updates every (hours, 0 = never)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "check": { "name": "Check for updates" },
+      "update_pending": { "name": "Update all pending" }
+    },
+    "sensor": {
+      "pending_guests": { "name": "Guests with updates" },
+      "last_check": { "name": "Last check" },
+      "activity": {
+        "name": "Activity",
+        "state": { "idle": "Idle", "checking": "Checking", "updating": "Updating" }
+      }
+    }
+  }
+}

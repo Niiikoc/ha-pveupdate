@@ -23,7 +23,10 @@ async def async_setup_entry(
 
     @callback
     def add_new() -> None:
-        new = [gid for gid in (coordinator.data or {}).get("guests", {}) if gid not in known]
+        guests = (coordinator.data or {}).get("guests", {})
+        # Forget untracked guests so they get a new entity if tracked again.
+        known.intersection_update(guests)
+        new = [gid for gid in guests if gid not in known]
         known.update(new)
         if new:
             async_add_entities(GuestUpdate(coordinator, gid) for gid in new)

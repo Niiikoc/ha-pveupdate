@@ -10,10 +10,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import CannotConnect, InvalidAuth, PveUpdateApi, PveUpdateError
-from .const import CONF_CHECK_INTERVAL, DEFAULT_CHECK_INTERVAL, DEFAULT_PORT, DOMAIN
+from .api import Busy, CannotConnect, InvalidAuth, PveUpdateApi, PveUpdateError
+from .const import CONF_CHECK_INTERVAL, CONF_GUESTS, DEFAULT_CHECK_INTERVAL, DEFAULT_PORT, DOMAIN
 
 
 async def _validate(hass: HomeAssistant, data: Mapping[str, Any]) -> dict[str, str]:
@@ -73,11 +74,50 @@ class PveUpdateConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class PveUpdateOptionsFlow(OptionsFlow):
+    """Check interval, and which guests pveupdate tracks (stored on the host)."""
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
+        api = self.config_entry.runtime_data.api
+        errors: dict[str, str] = {}
+        try:
+            guests = await api.get_guests()
+        except PveUpdateError:
+            guests = None
+            errors["base"] = "cannot_list_guests"
+
+        if user_input is not None and guests is not None:
+            chosen = user_input.pop(CONF_GUESTS, None)
+            tracked = {g["id"] for g in guests if g["tracked"]}
+            if chosen is not None and set(chosen) != tracked:
+                try:
+                    await api.set_tracked(sorted(chosen, key=int))
+                except Busy:
+                    errors["base"] = "busy"
+                except PveUpdateError:
+                    errors["base"] = "unknown"
+                else:
+                    if set(chosen) - tracked:
+                        # Check the new guests right away so they don't sit at "unchecked".
+                        try:
+                            await api.check()
+                        except PveUpdateError:
+                            pass
+                    await self.config_entry.runtime_data.async_request_refresh()
+            if not errors:
+                return self.async_create_entry(data=user_input)
+        elif user_input is not None:
+            # Host unreachable: still save the interval.
+            user_input.pop(CONF_GUESTS, None)
             return self.async_create_entry(data=user_input)
+
         current = self.config_entry.options.get(CONF_CHECK_INTERVAL, DEFAULT_CHECK_INTERVAL)
-        schema = vol.Schema(
-            {vol.Required(CONF_CHECK_INTERVAL, default=current): vol.All(int, vol.Range(min=0, max=168))}
-        )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        fields: dict[Any, Any] = {}
+        if guests is not None:
+            choices = {
+                g["id"]: f"{g['id']} {g['name']} ({'LXC' if g['type'] == 'lxc' else 'VM'})" for g in guests
+            }
+            fields[vol.Optional(CONF_GUESTS, default=[g["id"] for g in guests if g["tracked"]])] = (
+                cv.multi_select(choices)
+            )
+        fields[vol.Required(CONF_CHECK_INTERVAL, default=current)] = vol.All(int, vol.Range(min=0, max=168))
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(fields), errors=errors)

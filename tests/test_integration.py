@@ -39,7 +39,16 @@ def status(**over):
     return s
 
 
+ICONS = "https://cdn.jsdelivr.net/gh/selfhst/icons/png"
+
+
+def mock_icons(aioclient_mock):
+    for name, code in {"zigbee2mqtt": 200, "mosquitto": 404, "debian": 200, "mariadb": 404}.items():
+        aioclient_mock.head(f"{ICONS}/{name}.png", status=code)
+
+
 async def setup(hass, aioclient_mock, st=None):
+    mock_icons(aioclient_mock)
     aioclient_mock.get(f"{BASE}/status", json=st or status())
     entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="pve.local:8765")
     entry.add_to_hass(hass)
@@ -49,6 +58,7 @@ async def setup(hass, aioclient_mock, st=None):
 
 
 async def test_config_flow(hass: HomeAssistant, aioclient_mock):
+    mock_icons(aioclient_mock)
     aioclient_mock.get(f"{BASE}/status", json=status())
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
@@ -130,3 +140,13 @@ async def test_skip_reason_shown(hass: HomeAssistant, aioclient_mock):
     m = hass.states.get("update.mqtt")
     assert "last update skipped: no snapshot" in m.attributes["release_summary"]
     assert m.attributes["last_detail"].startswith("no snapshot")
+
+
+async def test_guest_pictures(hass: HomeAssistant, aioclient_mock):
+    await setup(hass, aioclient_mock)
+    # App icon when one exists.
+    assert hass.states.get("update.zigbee2mqtt").attributes["entity_picture"] == f"{ICONS}/zigbee2mqtt.png"
+    # No icon for the guest name ("mqtt" -> mosquitto 404): falls back to its OS.
+    assert hass.states.get("update.mqtt").attributes["entity_picture"] == f"{ICONS}/debian.png"
+    # Nothing found: the integration's own icon.
+    assert hass.states.get("update.mariadb").attributes["entity_picture"].endswith("/pveupdate/icon.png")

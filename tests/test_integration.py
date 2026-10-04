@@ -1,9 +1,13 @@
 """Tests against a mocked `pveupdate serve` API."""
 
+import pytest
+
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -15,21 +19,27 @@ DATA = {CONF_HOST: "pve.local", CONF_PORT: 8765, CONF_TOKEN: "secret"}
 
 def status(**over):
     s = {
-        "version": "0.3.0",
+        "version": "0.7.0",
         "checked_at": dt_util.utcnow().isoformat(),
         "running": False,
         "activity": None,
         "updating": None,
+        "updating_part": None,
         "queue": [],
-        "pending_guests": 2,
-        "pending_ids": "101 105",
+        "pending_guests": 4,
+        "pending_ids": "101 102 103 105",
         "guests": {
-            "101": {"name": "mqtt", "type": "lxc", "state": "ok", "os": "Debian 12.11", "packages": 3, "app": None,
-                    "app_installed": None, "app_latest": None, "app_update": False, "pending": True,
-                    "package_names": ["libc6", "openssl", "mosquitto"], "reboot_required": False},
-            "102": {"name": "mariadb", "type": "lxc", "state": "ok", "packages": 0, "app": None,
+            "101": {"name": "mqtt", "type": "lxc", "state": "ok", "os": "Debian 12.11", "packages": 3, "app": "mqtt",
+                    "app_installed": "2.0.18", "app_latest": "2.0.18", "app_update": False, "pending": True,
+                    "package_names": ["libc6", "openssl", "mosquitto"], "security_packages": 1,
+                    "reboot_required": False},
+            "102": {"name": "mariadb", "type": "lxc", "state": "ok", "packages": 0, "app": "mariadb",
                     "app_installed": None, "app_latest": None, "app_update": False, "pending": False,
                     "package_names": [], "reboot_required": False},
+            "103": {"name": "plain", "type": "lxc", "state": "ok", "os": "Debian 12.11", "os_latest": "Debian 12.12",
+                    "packages": 4, "app": None, "app_installed": None, "app_latest": None, "app_update": False,
+                    "pending": True, "package_names": ["a", "b", "c", "d"], "security_packages": 2,
+                    "reboot_required": False},
             "105": {"name": "zigbee2mqtt", "type": "lxc", "state": "ok", "packages": 2, "app": "zigbee2mqtt",
                     "app_installed": "2.9.1", "app_latest": "2.14.2", "app_update": True, "pending": True,
                     "package_names": ["libc6", "openssl"], "reboot_required": False},
@@ -84,20 +94,28 @@ async def test_config_flow_unreachable(hass: HomeAssistant, aioclient_mock):
 
 async def test_entities(hass: HomeAssistant, aioclient_mock):
     await setup(hass, aioclient_mock)
+    # Settings > Updates: app updates only.
     z = hass.states.get("update.zigbee2mqtt")
     assert z.state == "on"
     assert z.attributes["installed_version"] == "2.9.1"
-    assert z.attributes["latest_version"] == "2.14.2 + 2 packages"
+    assert z.attributes["latest_version"] == "2.14.2"
     assert "2.9.1 → 2.14.2" in z.attributes["release_summary"]
     m = hass.states.get("update.mqtt")
-    assert m.state == "on"
-    assert m.attributes["installed_version"] == "Debian 12.11"
-    assert m.attributes["latest_version"] == "Debian 12.11 + 3 packages"
-    mdb = hass.states.get("update.mariadb")
-    assert mdb.state == "off"
-    assert mdb.attributes["installed_version"] == "current"  # older pveupdate without `os`
-    assert hass.states.get("sensor.proxmox_pve_local_guests_with_updates").state == "2"
+    assert m.state == "off"  # OS packages pending, but no app update
+    assert m.attributes["installed_version"] == "2.0.18"
+    assert hass.states.get("update.mariadb").attributes["installed_version"] == "unknown"
+    assert hass.states.get("update.plain") is None  # no app
+    assert hass.states.get("sensor.proxmox_pve_local_guests_with_updates").state == "1"
     assert hass.states.get("sensor.proxmox_pve_local_activity").state == "idle"
+    # OS packages: a sensor and a button on every guest.
+    p = hass.states.get("sensor.plain_os_updates")
+    assert p.state == "4"
+    assert p.attributes["security_packages"] == 2
+    assert p.attributes["os_latest"] == "Debian 12.12"
+    assert hass.states.get("sensor.mqtt_os_updates").state == "3"
+    assert hass.states.get("sensor.mariadb_os_updates").state == "0"
+    assert hass.states.get("button.plain_update_os")
+    assert hass.states.get("button.zigbee2mqtt_update_os")
 
 
 async def test_install(hass: HomeAssistant, aioclient_mock):
@@ -106,21 +124,45 @@ async def test_install(hass: HomeAssistant, aioclient_mock):
     await hass.services.async_call("update", "install", {"entity_id": "update.zigbee2mqtt"}, blocking=True)
     posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
     assert posts and str(posts[-1][1]).endswith("/api/update")
-    assert posts[-1][2] == {"guests": ["105"]}
+    assert posts[-1][2] == {"guests": ["105"], "part": "app"}
+
+
+async def test_update_os_button(hass: HomeAssistant, aioclient_mock):
+    await setup(hass, aioclient_mock)
+    aioclient_mock.post(f"{BASE}/update", status=202, json={"started": "update", "guests": ["101"]})
+    await hass.services.async_call("button", "press", {"entity_id": "button.mqtt_update_os"}, blocking=True)
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert posts[-1][2] == {"guests": ["101"], "part": "os"}
+
+
+async def test_old_host_refuses_split(hass: HomeAssistant, aioclient_mock):
+    """pveupdate before 0.7.0 ignores "part" and would update both, so don't send it."""
+    await setup(hass, aioclient_mock, status(version="0.6.1"))
+    for domain, service, entity in [("update", "install", "update.zigbee2mqtt"), ("button", "press", "button.mqtt_update_os")]:
+        with pytest.raises(HomeAssistantError, match="0.7.0"):
+            await hass.services.async_call(domain, service, {"entity_id": entity}, blocking=True)
+    assert not [c for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).endswith("/update")]
 
 
 async def test_in_progress(hass: HomeAssistant, aioclient_mock):
-    await setup(hass, aioclient_mock, status(running=True, activity="updating", updating="101", queue=["105"],
-                                             progress=45, step="os"))
-    m = hass.states.get("update.mqtt")
-    assert m.attributes["in_progress"] is True
-    assert m.attributes["update_percentage"] == 45
-    assert m.attributes["update_step"] == "os"
+    await setup(hass, aioclient_mock, status(running=True, activity="updating", updating="105", updating_part="app",
+                                             queue=["101"], progress=45, step="app"))
     z = hass.states.get("update.zigbee2mqtt")
     assert z.attributes["in_progress"] is True
-    assert z.attributes["update_percentage"] is None  # queued
+    assert z.attributes["update_percentage"] == 45
+    assert z.attributes["update_step"] == "app"
+    m = hass.states.get("update.mqtt")
+    assert m.attributes["in_progress"] is True
+    assert m.attributes["update_percentage"] is None  # queued
     assert hass.states.get("update.mariadb").attributes["in_progress"] is False
     assert hass.states.get("sensor.proxmox_pve_local_activity").state == "updating"
+
+
+async def test_os_update_not_shown_as_app_update(hass: HomeAssistant, aioclient_mock):
+    await setup(hass, aioclient_mock, status(running=True, activity="updating", updating="105", updating_part="os",
+                                             progress=30, step="os"))
+    assert hass.states.get("update.zigbee2mqtt").attributes["in_progress"] is False
+    assert hass.states.get("sensor.zigbee2mqtt_os_updates").attributes["updating"] is True
 
 
 async def test_check_started_when_stale(hass: HomeAssistant, aioclient_mock):
@@ -141,30 +183,36 @@ async def test_buttons(hass: HomeAssistant, aioclient_mock):
 
 async def test_skip_reason_shown(hass: HomeAssistant, aioclient_mock):
     st = status()
-    st["guests"]["101"].update(last_result="skipped", last_detail="no snapshot (snapshot feature is not available) or backup (no storage)")
+    st["guests"]["105"].update(last_result="skipped", last_detail="no snapshot (snapshot feature is not available) or backup (no storage)")
     await setup(hass, aioclient_mock, st)
-    m = hass.states.get("update.mqtt")
-    assert "last update skipped: no snapshot" in m.attributes["release_summary"]
-    assert m.attributes["last_detail"].startswith("no snapshot")
+    z = hass.states.get("update.zigbee2mqtt")
+    assert "last update skipped: no snapshot" in z.attributes["release_summary"]
+    assert z.attributes["last_detail"].startswith("no snapshot")
 
 
 async def test_guest_pictures(hass: HomeAssistant, aioclient_mock):
     await setup(hass, aioclient_mock)
     # App icon when one exists.
     assert hass.states.get("update.zigbee2mqtt").attributes["entity_picture"] == f"{ICONS}/zigbee2mqtt.png"
-    # No icon for the guest name ("mqtt" -> mosquitto 404): falls back to its OS.
+    # No icon for the app ("mqtt" -> mosquitto 404): falls back to its OS.
     assert hass.states.get("update.mqtt").attributes["entity_picture"] == f"{ICONS}/debian.png"
     # Nothing found: the integration's own icon.
     assert hass.states.get("update.mariadb").attributes["entity_picture"].endswith("/pveupdate/icon.png")
 
 
-async def test_os_point_release(hass: HomeAssistant, aioclient_mock):
-    st = status()
-    st["guests"]["101"]["os_latest"] = "Debian 12.12"
-    await setup(hass, aioclient_mock, st)
-    m = hass.states.get("update.mqtt")
-    assert m.attributes["installed_version"] == "Debian 12.11"
-    assert m.attributes["latest_version"] == "Debian 12.12 + 3 packages"
+async def test_old_update_entity_removed(hass: HomeAssistant, aioclient_mock):
+    """0.2.x gave guests without an app an update entity; it goes away."""
+    entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="pve.local:8765")
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    registry.async_get_or_create("update", DOMAIN, f"{entry.entry_id}_103_update", config_entry=entry,
+                                 suggested_object_id="plain")
+    mock_icons(aioclient_mock)
+    aioclient_mock.get(f"{BASE}/status", json=status())
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get_entity_id("update", DOMAIN, f"{entry.entry_id}_103_update") is None
+    assert hass.states.get("update.plain") is None
 
 
 GUESTS = [
@@ -205,8 +253,10 @@ async def test_options_choose_guests(hass: HomeAssistant, aioclient_mock):
     posts = {str(c[1]).rsplit("/", 1)[-1]: c[2] for c in aioclient_mock.mock_calls if c[0] == "POST"}
     assert posts["track"] == {"guests": ["101", "105", "200"]}
     assert "check" in posts
-    assert hass.states.get("update.haos")
+    assert hass.states.get("sensor.haos_os_updates")
+    assert hass.states.get("update.haos") is None  # no app
     assert hass.states.get("update.mariadb") is None
+    assert hass.states.get("sensor.mariadb_os_updates") is None
 
 
 async def test_options_old_host(hass: HomeAssistant, aioclient_mock):

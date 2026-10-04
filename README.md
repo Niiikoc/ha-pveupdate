@@ -1,6 +1,6 @@
 # Proxmox Guest Updates for Home Assistant
 
-Shows OS and app updates for your Proxmox LXCs and VMs as Home Assistant **update** entities, and installs them when you press **Install**. Nothing updates on its own.
+Shows app updates for your Proxmox LXCs and VMs as Home Assistant **update** entities and installs them when you press **Install**. OS packages get their own *Update OS* button. Nothing updates on its own.
 
 Works together with [pveupdate](https://github.com/Niiikoc/Pveupdate), which runs on the Proxmox host and does the actual work: snapshot first, then OS packages (`apt`/`apk`), then the app's own update (community-scripts `update` or your own command).
 
@@ -8,10 +8,12 @@ It sits next to the regular Proxmox VE integrations; it doesn't replace them. Th
 
 ## What you get
 
-- **One update entity per tracked guest**, e.g. *zigbee2mqtt: 2.9.1 → 2.14.2 + 2 packages*, listed under Settings → Updates with release notes (the package list) and an Install button with progress.
+- **One update entity per guest with an app**, e.g. *zigbee2mqtt: 2.9.1 → 2.14.2*, listed under Settings → Updates with an Install button and progress. Install takes a snapshot, then runs only the app's update.
+- **On every guest's device page:** an *Update OS* button (snapshot, then OS packages only) and an *OS updates* sensor with the number of pending packages (attributes: security updates, package names, OS version, reboot required). OS packages never show up under Settings → Updates, so they don't nag you every day.
 - **Proxmox host device** with:
-  - *Check for updates* and *Update all pending* buttons
-  - *Guests with updates* sensor (optional, for your own automations)
+  - *Check for updates* button
+  - *Update all pending* updates both the OS and the app of every guest with updates
+  - *Guests with updates* sensor: guests with an app update (optional, for your own automations)
   - *Last check* and *Activity* (idle / checking / updating) sensors
 - Automatic read-only checks every 6 hours (configurable, or off).
 
@@ -50,7 +52,7 @@ Options (⚙ on the integration):
 
 ## Optional: a notification
 
-You don't need any automation: every guest with updates shows up under **Settings → Updates**, like Home Assistant's own updates. If you also want a phone notification, this example uses the *Guests with updates* sensor:
+You don't need any automation: every guest with an app update shows up under **Settings → Updates**, like Home Assistant's own updates. If you also want a phone notification, this example uses the *Guests with updates* sensor:
 
 ```yaml
 automation:
@@ -73,7 +75,7 @@ Replace `192_168_1_10` with your host as it appears in the sensor's entity ID.
 - Update output goes to `/var/log/pveupdate.log` on the host.
 - Each guest's picture comes from the [selfh.st icon set](https://selfh.st/icons), matched by app or guest name (e.g. *zigbee2mqtt*, *mariadb*), then by OS (*debian*). Guests with no match use the integration's icon, which needs Home Assistant 2026.3 or newer.
 - If a guest can't be snapshotted (storage without snapshot support), pveupdate takes a `vzdump` backup instead and then updates. If that fails too, the guest is skipped and the update entity shows why.
-- Guests without a readable app version show their OS version (e.g. *Debian 12.11*) as the installed version. This needs pveupdate 0.4.0 or newer on the host.
+- Separate app and OS updates need pveupdate 0.7.0 or newer on the host. With an older one, Install and *Update OS* ask you to update pveupdate first.
 
 ## Contributing
 

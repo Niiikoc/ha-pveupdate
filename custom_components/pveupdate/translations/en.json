@@ -52,6 +52,9 @@
       },
       "update_pending": {
         "name": "Update all pending"
+      },
+      "update_os": {
+        "name": "Update OS"
       }
     },
     "sensor": {
@@ -68,6 +71,9 @@
           "checking": "Checking",
           "updating": "Updating"
         }
+      },
+      "os_updates": {
+        "name": "OS updates"
       }
     }
   }

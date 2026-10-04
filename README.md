@@ -9,7 +9,7 @@ It sits next to the regular Proxmox VE integrations; it doesn't replace them. Th
 ## What you get
 
 - **One update entity per guest with an app**, e.g. *zigbee2mqtt: 2.9.1 → 2.14.2*, listed under Settings → Updates with an Install button and progress. Install takes a snapshot, then runs only the app's update.
-- **On every guest's device page:** an *Update OS* button (snapshot, then OS packages only) and an *OS updates* sensor with the number of pending packages (attributes: security updates, package names, OS version, reboot required). OS packages never show up under Settings → Updates, so they don't nag you every day.
+- **On every guest's device page:** an *Update OS* button (snapshot, then OS packages only), an *Update app* button for guests with an app (also works when the app's version can't be read, so the update entity can't tell whether there's a new one) and an *OS updates* sensor with the number of pending packages (attributes: security updates, package names, OS version, reboot required). OS packages never show up under Settings → Updates, so they don't nag you every day.
 - **Proxmox host device** with:
   - *Check for updates* button
   - *Update all pending* updates both the OS and the app of every guest with updates

@@ -58,9 +58,12 @@ class PveUpdateApi:
     async def check(self) -> None:
         await self._request("POST", "check")
 
-    async def update(self, guests: list[str] | str) -> None:
-        """guests: a list of guest IDs, or "pending" / "all"."""
-        await self._request("POST", "update", json={"guests": guests})
+    async def update(self, guests: list[str] | str, part: str = "all") -> None:
+        """guests: a list of guest IDs, or "pending" / "all". part: "all", "os" or "app"."""
+        body: dict[str, Any] = {"guests": guests}
+        if part != "all":
+            body["part"] = part
+        await self._request("POST", "update", json=body)
 
     async def get_guests(self) -> list[dict]:
         """Every LXC and VM on the node, each with a "tracked" flag."""

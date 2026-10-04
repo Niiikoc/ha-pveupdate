@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.const import CONF_HOST
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -20,6 +21,24 @@ def host_device(coordinator: PveUpdateCoordinator) -> DeviceInfo:
         sw_version=(coordinator.data or {}).get("version"),
         configuration_url=f"https://{entry.data[CONF_HOST]}:8006",
     )
+
+
+# First pveupdate that can update OS packages and the app separately.
+MIN_PARTS_VERSION = (0, 7, 0)
+
+
+def require_parts(coordinator: PveUpdateCoordinator) -> None:
+    """Refuse OS-only or app-only updates on hosts that would run both."""
+    version = (coordinator.data or {}).get("version") or "0"
+    try:
+        parsed = tuple(int(x) for x in version.split(".")[:3])
+    except ValueError:
+        parsed = (0,)
+    if parsed < MIN_PARTS_VERSION:
+        raise HomeAssistantError(
+            f"pveupdate {version} on the host can't update the OS and the app separately. "
+            "Update it to 0.7.0 or later."
+        )
 
 
 class HostEntity(CoordinatorEntity[PveUpdateCoordinator]):

@@ -55,6 +55,9 @@
       },
       "update_os": {
         "name": "Update OS"
+      },
+      "update_app": {
+        "name": "Update app"
       }
     },
     "sensor": {

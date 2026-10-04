@@ -85,7 +85,9 @@ class GuestUpdate(GuestEntity, UpdateEntity):
 
     @property
     def installed_version(self) -> str | None:
-        return self.guest.get("app_installed") or "unknown"
+        # Apps whose version can't be read show the guest's OS version instead.
+        g = self.guest
+        return g.get("app_installed") or g.get("os") or "unknown"
 
     @property
     def latest_version(self) -> str | None:

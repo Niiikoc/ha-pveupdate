@@ -1,5 +1,7 @@
 # Proxmox Guest Updates for Home Assistant
 
+[![HACS Default](https://img.shields.io/badge/HACS-Default-orange.svg)](https://hacs.xyz)
+
 Shows app updates for your Proxmox LXCs and VMs as Home Assistant **update** entities and installs them when you press **Install**. OS packages get their own *Update OS* button. Nothing updates on its own.
 
 Works together with [pveupdate](https://github.com/Niiikoc/Pveupdate), which runs on the Proxmox host and does the actual work: snapshot first, then OS packages (`apt`/`apk`), then the app's own update (community-scripts `update` or your own command).
@@ -34,6 +36,8 @@ pveupdate token                      # copy this for step 3
 The API listens on port 8765 and requires the token for every request. It only accepts these actions: read status, list the node's guests, choose which are tracked, start a check, and update tracked guests.
 
 ### 2. Install the integration
+
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Niiikoc&repository=ha-pveupdate&category=integration)
 
 HACS → search for **Proxmox Guest Updates** → **Download** → restart Home Assistant.
 

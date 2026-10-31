@@ -67,7 +67,7 @@ class UpdatePendingButton(HostEntity, _ApiButton):
 
 
 class UpdateOsButton(GuestEntity, _ApiButton):
-    """OS packages of one guest (snapshot first); the app is left alone."""
+    """OS packages of one guest (snapshot first); the app is left alone, unless it's one of those packages."""
 
     _attr_icon = "mdi:package-up"
     _attr_translation_key = "update_os"

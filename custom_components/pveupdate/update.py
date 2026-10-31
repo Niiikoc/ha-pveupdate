@@ -85,9 +85,8 @@ class GuestUpdate(GuestEntity, UpdateEntity):
 
     @property
     def installed_version(self) -> str | None:
-        # Apps whose version can't be read show the guest's OS version instead.
-        g = self.guest
-        return g.get("app_installed") or g.get("os") or "unknown"
+        # This entity is about the app; the OS version is on the OS updates sensor.
+        return self.guest.get("app_installed") or "unknown"
 
     @property
     def latest_version(self) -> str | None:
@@ -95,6 +94,11 @@ class GuestUpdate(GuestEntity, UpdateEntity):
         if g.get("app_update") and g.get("app_latest"):
             return g["app_latest"]
         return self.installed_version
+
+    def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
+        # The host decides. Home Assistant reads 2.0.18-1+deb12u2 as no newer than
+        # 2.0.18-1+deb12u1, which would hide what the host counts as an update.
+        return bool(self.guest.get("app_update"))
 
     @property
     def release_summary(self) -> str | None:
@@ -147,7 +151,7 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             lines.append(f"**{g.get('app')}**: {g.get('app_installed')} → {g.get('app_latest')}\n")
         lines.append(
             "Installing takes a snapshot first (if enabled for this guest), then runs the app's update. "
-            "OS packages are not touched; use the guest's *Update OS* button for those."
+            "Other OS packages are left to the guest's *Update OS* button."
         )
         return "\n".join(lines)
 

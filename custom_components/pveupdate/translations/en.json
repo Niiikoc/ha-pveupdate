@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to pveupdate",
-        "description": "Run `pveupdate serve` on your Proxmox host and get the token with `pveupdate token`.",
+        "description": "Needs pveupdate 0.8.0 or later on your Proxmox host, so that the connection is encrypted. Run `pveupdate serve` on the host and paste the whole output of `pveupdate token`.",
         "data": {
           "host": "Proxmox host",
           "port": "Port",
@@ -12,20 +12,29 @@
       },
       "reauth_confirm": {
         "title": "New pveupdate token",
-        "description": "The token was rejected. Get the current one on the host with `pveupdate token`.",
+        "description": "The token was rejected, the host's certificate no longer matches it, or it comes from before pveupdate 0.8.0, which is now required so that the connection is encrypted. Update pveupdate on the host if needed, run `systemctl restart pveupdate-serve`, then paste the whole output of `pveupdate token`.",
+        "data": {
+          "token": "API token"
+        }
+      },
+      "reconfigure": {
+        "title": "New pveupdate token",
+        "description": "Paste the whole output of `pveupdate token` from the host. Needs pveupdate 0.8.0 or later.",
         "data": {
           "token": "API token"
         }
       }
     },
     "error": {
-      "cannot_connect": "Cannot reach pveupdate on that host and port. Is `pveupdate serve` running?",
+      "cannot_connect": "Cannot reach pveupdate on that host and port. Is `pveupdate serve` running? After updating pveupdate, restart it with `systemctl restart pveupdate-serve`.",
       "invalid_auth": "The token was rejected.",
+      "token_without_certificate": "This token has no certificate fingerprint, so the connection can't be encrypted. Update pveupdate on the host to 0.8.0 or later, run `systemctl restart pveupdate-serve`, then paste the whole output of `pveupdate token`.",
       "unknown": "Unexpected error."
     },
     "abort": {
       "already_configured": "This host is already set up.",
-      "reauth_successful": "Token updated."
+      "reauth_successful": "Token updated.",
+      "reconfigure_successful": "Token updated."
     }
   },
   "options": {
@@ -41,6 +50,7 @@
     },
     "error": {
       "cannot_list_guests": "Could not get the guest list from pveupdate. Update pveupdate on the host to 0.6.0 or later, and check `pveupdate serve` is running.",
+      "guests_locked": "Tracked guests can only be changed on the host, because `remote-track` is off there. You can still change the check interval.",
       "busy": "A check or update is running. Try again when it finishes.",
       "unknown": "Unexpected error."
     }

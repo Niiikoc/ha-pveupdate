@@ -1,5 +1,6 @@
 """Tests against a mocked `pveupdate serve` API."""
 
+import aiohttp
 import pytest
 
 from homeassistant import config_entries
@@ -11,10 +12,12 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.pveupdate.api import InvalidAuth, PveUpdateApi, TokenWithoutCertificate
 from custom_components.pveupdate.const import DOMAIN
 
-BASE = "http://pve.local:8765/api"
-DATA = {CONF_HOST: "pve.local", CONF_PORT: 8765, CONF_TOKEN: "secret"}
+BASE = "https://pve.local:8765/api"
+TOKEN = "secret." + "ab" * 32
+DATA = {CONF_HOST: "pve.local", CONF_PORT: 8765, CONF_TOKEN: TOKEN}
 
 
 def status(**over):
@@ -103,7 +106,7 @@ async def test_entities(hass: HomeAssistant, aioclient_mock):
     m = hass.states.get("update.mqtt")
     assert m.state == "off"  # OS packages pending, but no app update
     assert m.attributes["installed_version"] == "2.0.18"
-    assert hass.states.get("update.mariadb").attributes["installed_version"] == "unknown"  # no app or OS version
+    assert hass.states.get("update.mariadb").attributes["installed_version"] == "unknown"  # no app version
     assert hass.states.get("update.plain") is None  # no app
     assert hass.states.get("sensor.proxmox_pve_local_guests_with_updates").state == "1"
     assert hass.states.get("sensor.proxmox_pve_local_activity").state == "idle"
@@ -119,6 +122,14 @@ async def test_entities(hass: HomeAssistant, aioclient_mock):
     # Update app: every guest with an app, none without.
     assert hass.states.get("button.zigbee2mqtt_update_app")
     assert hass.states.get("button.plain_update_app") is None
+
+
+async def test_debian_revision_is_an_update(hass: HomeAssistant, aioclient_mock):
+    """The host decides what is newer, also for versions Home Assistant can't order."""
+    st = status()
+    st["guests"]["101"].update(app_installed="2.0.18-1+deb12u1", app_latest="2.0.18-1+deb12u2", app_update=True)
+    await setup(hass, aioclient_mock, st)
+    assert hass.states.get("update.mqtt").state == "on"
 
 
 async def test_install(hass: HomeAssistant, aioclient_mock):
@@ -139,11 +150,11 @@ async def test_update_os_button(hass: HomeAssistant, aioclient_mock):
 
 
 async def test_unknown_app_version(hass: HomeAssistant, aioclient_mock):
-    """An app whose version can't be read shows the OS version and can be updated with its button."""
+    """An app whose version can't be read shows as unknown, not the OS version, and can be updated with its button."""
     st = status()
     st["guests"]["101"].update(app_installed=None, app_latest=None)
     await setup(hass, aioclient_mock, st)
-    assert hass.states.get("update.mqtt").attributes["installed_version"] == "Debian 12.11"
+    assert hass.states.get("update.mqtt").attributes["installed_version"] == "unknown"
     aioclient_mock.post(f"{BASE}/update", status=202, json={"started": "update", "guests": ["101"]})
     await hass.services.async_call("button", "press", {"entity_id": "button.mqtt_update_app"}, blocking=True)
     posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
@@ -284,3 +295,98 @@ async def test_options_old_host(hass: HomeAssistant, aioclient_mock):
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"check_interval": 12})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {"check_interval": 12}
+
+
+async def test_options_guests_locked(hass: HomeAssistant, aioclient_mock):
+    """With remote_track off on the host, guests aren't offered and the interval still saves."""
+    entry = await setup(hass, aioclient_mock, status(remote_track=False))
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["errors"] == {"base": "guests_locked"}
+    assert "guests" not in result["data_schema"].schema
+    assert not [c for c in aioclient_mock.mock_calls if str(c[1]).endswith("/guests")]
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"check_interval": 12})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {"check_interval": 12}
+
+
+def test_token_parsing():
+    """The connection is always HTTPS to the pinned certificate, and the fingerprint is never sent."""
+    api = PveUpdateApi(None, "pve.local", 8765, TOKEN)
+    assert api._base == BASE
+    assert api._headers == {"Authorization": "Bearer secret"}
+    assert isinstance(api._ssl, aiohttp.Fingerprint)
+    for bad in ("secret", "secret."):
+        with pytest.raises(TokenWithoutCertificate):
+            PveUpdateApi(None, "pve.local", 8765, bad)
+    for bad in ("secret.nothex", "secret.abcd"):
+        with pytest.raises(InvalidAuth):
+            PveUpdateApi(None, "pve.local", 8765, bad)
+
+
+@pytest.mark.parametrize("token", ["secret", "secret."])
+async def test_config_flow_token_without_certificate(hass: HomeAssistant, aioclient_mock, token):
+    """It can't be set up without encryption, and the token never leaves Home Assistant."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, CONF_TOKEN: token})
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "token_without_certificate"}
+    assert not aioclient_mock.mock_calls
+
+
+async def test_config_flow_malformed_token(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, CONF_TOKEN: "secret.nothex"})
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_certificate_change_asks_for_token(hass: HomeAssistant, aioclient_mock):
+    """A certificate that no longer matches is an auth failure, not an outage."""
+    error = aiohttp.ServerFingerprintMismatch(b"a" * 32, b"b" * 32, "pve.local", 8765)
+    aioclient_mock.get(f"{BASE}/status", exc=error)
+    entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="pve.local:8765")
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.SETUP_ERROR
+    flows = hass.config_entries.flow.async_progress()
+    assert [f["step_id"] for f in flows] == ["reauth_confirm"]
+
+
+async def test_old_token_asks_for_new_one(hass: HomeAssistant, aioclient_mock):
+    """An entry from before 0.4.0 sends nothing, asks for a new token and works with it."""
+    entry = MockConfigEntry(domain=DOMAIN, data={**DATA, CONF_TOKEN: "secret"}, unique_id="pve.local:8765")
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.SETUP_ERROR
+    assert not aioclient_mock.mock_calls
+    flows = hass.config_entries.flow.async_progress()
+    assert [f["step_id"] for f in flows] == ["reauth_confirm"]
+
+    mock_icons(aioclient_mock)
+    aioclient_mock.get(f"{BASE}/status", json=status())
+    result = await hass.config_entries.flow.async_configure(flows[0]["flow_id"], {CONF_TOKEN: "secret"})
+    assert result["errors"] == {"base": "token_without_certificate"}
+    result = await hass.config_entries.flow.async_configure(flows[0]["flow_id"], {CONF_TOKEN: TOKEN})
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_TOKEN] == TOKEN
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+
+
+async def test_reconfigure_needs_certificate(hass: HomeAssistant, aioclient_mock):
+    """A token without a fingerprint can't replace a working one."""
+    entry = await setup(hass, aioclient_mock)
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["step_id"] == "reconfigure"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: "secret"})
+    assert result["errors"] == {"base": "token_without_certificate"}
+    assert entry.data[CONF_TOKEN] == TOKEN
+
+    new_token = "new." + "cd" * 32
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: new_token})
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_TOKEN] == new_token

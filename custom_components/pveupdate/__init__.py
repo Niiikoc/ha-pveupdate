@@ -5,10 +5,11 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, issue_registry as ir
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import PveUpdateApi
+from .api import InvalidAuth, PveUpdateApi
 from .const import DOMAIN
 from .coordinator import PveUpdateCoordinator
 
@@ -18,22 +19,13 @@ type PveUpdateConfigEntry = ConfigEntry[PveUpdateCoordinator]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PveUpdateConfigEntry) -> bool:
-    api = PveUpdateApi(
-        async_get_clientsession(hass), entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_TOKEN]
-    )
-    # A token without a certificate fingerprint means plain HTTP.
-    if "." in entry.data[CONF_TOKEN]:
-        ir.async_delete_issue(hass, DOMAIN, _insecure_issue_id(entry))
-    else:
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            _insecure_issue_id(entry),
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="insecure_http",
-            translation_placeholders={"host": entry.data[CONF_HOST]},
+    try:
+        api = PveUpdateApi(
+            async_get_clientsession(hass), entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_TOKEN]
         )
+    except InvalidAuth as err:
+        # Entries from before 0.4.0 can hold a token without a certificate fingerprint.
+        raise ConfigEntryAuthFailed(str(err)) from err
     coordinator = PveUpdateCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
@@ -61,13 +53,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: PveUpdateConfigEntry) -
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def async_remove_entry(hass: HomeAssistant, entry: PveUpdateConfigEntry) -> None:
-    ir.async_delete_issue(hass, DOMAIN, _insecure_issue_id(entry))
-
-
 async def _async_reload(hass: HomeAssistant, entry: PveUpdateConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
-
-
-def _insecure_issue_id(entry: PveUpdateConfigEntry) -> str:
-    return f"insecure_http_{entry.entry_id}"

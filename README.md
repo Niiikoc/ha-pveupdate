@@ -4,7 +4,7 @@
 
 Shows app updates for your Proxmox LXCs and VMs as Home Assistant **update** entities and installs them when you press **Install**. OS packages get their own *Update OS* button. Nothing updates on its own.
 
-Works together with [pveupdate](https://github.com/Niiikoc/Pveupdate), which runs on the Proxmox host and does the actual work: snapshot first, then OS packages (`apt`/`apk`), then the app's own update (community-scripts `update` or your own command).
+Works together with [pveupdate](https://github.com/Niiikoc/Pveupdate) **0.8.0 or later**, which runs on the Proxmox host and does the actual work: snapshot first, then OS packages (`apt`/`apk`), then the app's own update (community-scripts `update` or your own command).
 
 It sits next to the regular Proxmox VE integrations; it doesn't replace them. The Proxmox API can't run commands inside containers, which is why pveupdate is needed on the host.
 
@@ -47,11 +47,13 @@ Manual install: download `pveupdate.zip` from the latest release, unzip it into 
 
 ### 3. Add it
 
-Settings → Devices & services → **Add integration** → *Proxmox Guest Updates* → enter the host's IP, port `8765` and the token.
+Settings → Devices & services → **Add integration** → *Proxmox Guest Updates* → enter the host's IP, port `8765` and the whole output of `pveupdate token`.
+
+**Updating from an integration version before 0.4.0:** it stops working until you give it a new token, because it no longer connects without encryption. On the host, update pveupdate to 0.8.0 or later, then run `systemctl restart pveupdate-serve` and `pveupdate token`. Home Assistant asks for the new token under Settings → Devices & services. Your entities and automations stay as they are.
 
 Options (⚙ on the integration):
 
-- **Guests to track**: tick the LXCs and VMs pveupdate should manage. Newly ticked guests are checked right away; unticked ones are removed from Home Assistant. Needs pveupdate 0.6.0 or later on the host.
+- **Guests to track**: tick the LXCs and VMs pveupdate should manage. Newly ticked guests are checked right away; unticked ones are removed from Home Assistant.
 - How often to check for updates, in hours (0 = only when you press *Check for updates*).
 
 ## Optional: a notification
@@ -75,14 +77,13 @@ Replace `192_168_1_10` with your host as it appears in the sensor's entity ID.
 
 ## Notes
 
-- With pveupdate 0.8.0 or newer, `pveupdate token` also prints the fingerprint of the host's certificate, and Home Assistant connects over HTTPS and trusts only that certificate. Tokens from older versions keep working over plain HTTP, and Settings → Repairs tells you how to switch: restart `pveupdate-serve` after updating pveupdate, then paste the new `pveupdate token` output under the integration's ⋮ menu → **Reconfigure**.
+- `pveupdate token` also prints the fingerprint of the host's certificate. Home Assistant connects only over HTTPS and trusts only that certificate, and it refuses a token without a fingerprint.
 - Allow port 8765 only from Home Assistant's IP in the Proxmox firewall, and don't port-forward it. Home Assistant has no root access to the host, but anyone with the token can start updates on the guests, so turn on encryption for your Home Assistant backups, which contain it.
 - Rotate the token with `pveupdate token --new`. The old one stops working immediately and Home Assistant asks for the new one. It also asks if the host's certificate changes.
-- `pveupdate set default --remote-track off` on the host limits the token to the guests you chose there; Home Assistant then can't change them (needs pveupdate 0.8.0 or newer).
+- `pveupdate set default --remote-track off` on the host limits the token to the guests you chose there; Home Assistant then can't change them.
 - Update output goes to `/var/log/pveupdate.log` on the host.
 - Each guest's picture comes from the [selfh.st icon set](https://selfh.st/icons), matched by app or guest name (e.g. *zigbee2mqtt*, *mariadb*), then by OS (*debian*). Guests with no match use the integration's icon, which needs Home Assistant 2026.3 or newer.
 - If a guest can't be snapshotted (storage without snapshot support), pveupdate takes a `vzdump` backup instead and then updates. If that fails too, the guest is skipped and the update entity shows why.
-- Separate app and OS updates need pveupdate 0.7.0 or newer on the host. With an older one, Install and *Update OS* ask you to update pveupdate first.
 
 ## Contributing
 

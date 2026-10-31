@@ -8,17 +8,16 @@ from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er, issue_registry as ir
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pveupdate.api import InvalidAuth, PveUpdateApi
+from custom_components.pveupdate.api import InvalidAuth, PveUpdateApi, TokenWithoutCertificate
 from custom_components.pveupdate.const import DOMAIN
 
-BASE = "http://pve.local:8765/api"
-DATA = {CONF_HOST: "pve.local", CONF_PORT: 8765, CONF_TOKEN: "secret"}
-HTTPS_BASE = "https://pve.local:8765/api"
-PINNED_TOKEN = "secret." + "ab" * 32
+BASE = "https://pve.local:8765/api"
+TOKEN = "secret." + "ab" * 32
+DATA = {CONF_HOST: "pve.local", CONF_PORT: 8765, CONF_TOKEN: TOKEN}
 
 
 def status(**over):
@@ -311,29 +310,27 @@ async def test_options_guests_locked(hass: HomeAssistant, aioclient_mock):
 
 
 def test_token_parsing():
-    """The fingerprint selects HTTPS and is never sent; a bad one is refused."""
-    api = PveUpdateApi(None, "pve.local", 8765, PINNED_TOKEN)
-    assert api._base == HTTPS_BASE
+    """The connection is always HTTPS to the pinned certificate, and the fingerprint is never sent."""
+    api = PveUpdateApi(None, "pve.local", 8765, TOKEN)
+    assert api._base == BASE
     assert api._headers == {"Authorization": "Bearer secret"}
     assert isinstance(api._ssl, aiohttp.Fingerprint)
-    plain = PveUpdateApi(None, "pve.local", 8765, "secret")
-    assert plain._base == BASE
-    assert plain._ssl is True
+    for bad in ("secret", "secret."):
+        with pytest.raises(TokenWithoutCertificate):
+            PveUpdateApi(None, "pve.local", 8765, bad)
     for bad in ("secret.nothex", "secret.abcd"):
         with pytest.raises(InvalidAuth):
             PveUpdateApi(None, "pve.local", 8765, bad)
 
 
-async def test_config_flow_pinned_token(hass: HomeAssistant, aioclient_mock):
-    mock_icons(aioclient_mock)
-    aioclient_mock.get(f"{HTTPS_BASE}/status", json=status())
+@pytest.mark.parametrize("token", ["secret", "secret."])
+async def test_config_flow_token_without_certificate(hass: HomeAssistant, aioclient_mock, token):
+    """It can't be set up without encryption, and the token never leaves Home Assistant."""
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, CONF_TOKEN: PINNED_TOKEN})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    assert all(str(c[1]).startswith("https://") for c in aioclient_mock.mock_calls if "pve.local" in str(c[1]))
-    entry_id = result["result"].entry_id
-    assert ir.async_get(hass).async_get_issue(DOMAIN, f"insecure_http_{entry_id}") is None
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, CONF_TOKEN: token})
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "token_without_certificate"}
+    assert not aioclient_mock.mock_calls
 
 
 async def test_config_flow_malformed_token(hass: HomeAssistant):
@@ -345,8 +342,8 @@ async def test_config_flow_malformed_token(hass: HomeAssistant):
 async def test_certificate_change_asks_for_token(hass: HomeAssistant, aioclient_mock):
     """A certificate that no longer matches is an auth failure, not an outage."""
     error = aiohttp.ServerFingerprintMismatch(b"a" * 32, b"b" * 32, "pve.local", 8765)
-    aioclient_mock.get(f"{HTTPS_BASE}/status", exc=error)
-    entry = MockConfigEntry(domain=DOMAIN, data={**DATA, CONF_TOKEN: PINNED_TOKEN}, unique_id="pve.local:8765")
+    aioclient_mock.get(f"{BASE}/status", exc=error)
+    entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="pve.local:8765")
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -355,18 +352,41 @@ async def test_certificate_change_asks_for_token(hass: HomeAssistant, aioclient_
     assert [f["step_id"] for f in flows] == ["reauth_confirm"]
 
 
-async def test_reconfigure_moves_to_https(hass: HomeAssistant, aioclient_mock):
-    """A token alone raises a repair; pasting the new one switches to HTTPS and clears it."""
-    entry = await setup(hass, aioclient_mock)
-    issue_id = f"insecure_http_{entry.entry_id}"
-    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+async def test_old_token_asks_for_new_one(hass: HomeAssistant, aioclient_mock):
+    """An entry from before 0.4.0 sends nothing, asks for a new token and works with it."""
+    entry = MockConfigEntry(domain=DOMAIN, data={**DATA, CONF_TOKEN: "secret"}, unique_id="pve.local:8765")
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.SETUP_ERROR
+    assert not aioclient_mock.mock_calls
+    flows = hass.config_entries.flow.async_progress()
+    assert [f["step_id"] for f in flows] == ["reauth_confirm"]
 
-    aioclient_mock.get(f"{HTTPS_BASE}/status", json=status())
+    mock_icons(aioclient_mock)
+    aioclient_mock.get(f"{BASE}/status", json=status())
+    result = await hass.config_entries.flow.async_configure(flows[0]["flow_id"], {CONF_TOKEN: "secret"})
+    assert result["errors"] == {"base": "token_without_certificate"}
+    result = await hass.config_entries.flow.async_configure(flows[0]["flow_id"], {CONF_TOKEN: TOKEN})
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_TOKEN] == TOKEN
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+
+
+async def test_reconfigure_needs_certificate(hass: HomeAssistant, aioclient_mock):
+    """A token without a fingerprint can't replace a working one."""
+    entry = await setup(hass, aioclient_mock)
     result = await entry.start_reconfigure_flow(hass)
     assert result["step_id"] == "reconfigure"
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: PINNED_TOKEN})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: "secret"})
+    assert result["errors"] == {"base": "token_without_certificate"}
+    assert entry.data[CONF_TOKEN] == TOKEN
+
+    new_token = "new." + "cd" * 32
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: new_token})
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert entry.data[CONF_TOKEN] == PINNED_TOKEN
-    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert entry.data[CONF_TOKEN] == new_token

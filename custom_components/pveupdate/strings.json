@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to pveupdate",
-        "description": "Run `pveupdate serve` on your Proxmox host and get the token with `pveupdate token`.",
+        "description": "Needs pveupdate 0.8.0 or later on your Proxmox host, so that the connection is encrypted. Run `pveupdate serve` on the host and paste the whole output of `pveupdate token`.",
         "data": {
           "host": "Proxmox host",
           "port": "Port",
@@ -12,14 +12,14 @@
       },
       "reauth_confirm": {
         "title": "New pveupdate token",
-        "description": "The token was rejected, or the host's certificate no longer matches it. Get the current one on the host with `pveupdate token`.",
+        "description": "The token was rejected, the host's certificate no longer matches it, or it comes from before pveupdate 0.8.0, which is now required so that the connection is encrypted. Update pveupdate on the host if needed, run `systemctl restart pveupdate-serve`, then paste the whole output of `pveupdate token`.",
         "data": {
           "token": "API token"
         }
       },
       "reconfigure": {
         "title": "New pveupdate token",
-        "description": "Get the current token on the host with `pveupdate token`. With pveupdate 0.8.0 or later it also moves the connection to HTTPS.",
+        "description": "Paste the whole output of `pveupdate token` from the host. Needs pveupdate 0.8.0 or later.",
         "data": {
           "token": "API token"
         }
@@ -28,18 +28,13 @@
     "error": {
       "cannot_connect": "Cannot reach pveupdate on that host and port. Is `pveupdate serve` running? After updating pveupdate, restart it with `systemctl restart pveupdate-serve`.",
       "invalid_auth": "The token was rejected.",
+      "token_without_certificate": "This token has no certificate fingerprint, so the connection can't be encrypted. Update pveupdate on the host to 0.8.0 or later, run `systemctl restart pveupdate-serve`, then paste the whole output of `pveupdate token`.",
       "unknown": "Unexpected error."
     },
     "abort": {
       "already_configured": "This host is already set up.",
       "reauth_successful": "Token updated.",
       "reconfigure_successful": "Token updated."
-    }
-  },
-  "issues": {
-    "insecure_http": {
-      "title": "pveupdate connection to {host} is not encrypted",
-      "description": "Home Assistant sends the token for {host} over plain HTTP, so it can be read on your network. Update pveupdate on the host to 0.8.0 or later, run `systemctl restart pveupdate-serve` and `pveupdate token`, then paste the result under the integration's Reconfigure."
     }
   },
   "options": {

@@ -20,6 +20,10 @@ class InvalidAuth(PveUpdateError):
     """The token was rejected."""
 
 
+class TokenWithoutCertificate(InvalidAuth):
+    """The token has no certificate fingerprint: it comes from before pveupdate 0.8.0."""
+
+
 class Busy(PveUpdateError):
     """A check or update is already running."""
 
@@ -28,15 +32,17 @@ class PveUpdateApi:
     """Talks to `pveupdate serve`."""
 
     def __init__(self, session: aiohttp.ClientSession, host: str, port: int, token: str) -> None:
-        # `pveupdate token` prints "<token>.<certificate fingerprint>". A token
-        # alone comes from before pveupdate 0.8.0 and means plain HTTP.
+        # `pveupdate token` prints "<token>.<certificate fingerprint>". The token
+        # only ever goes over HTTPS to that certificate, so a fingerprint is required.
         token, _, fingerprint = token.partition(".")
+        if not fingerprint:
+            raise TokenWithoutCertificate("the token has no certificate fingerprint; pveupdate 0.8.0 or later is needed")
         try:
-            self._ssl = aiohttp.Fingerprint(bytes.fromhex(fingerprint)) if fingerprint else True
+            self._ssl = aiohttp.Fingerprint(bytes.fromhex(fingerprint))
         except ValueError as err:
             raise InvalidAuth("malformed token") from err
         self._session = session
-        self._base = f"{'https' if fingerprint else 'http'}://{host}:{port}/api"
+        self._base = f"https://{host}:{port}/api"
         self._headers = {"Authorization": f"Bearer {token}"}
 
     async def _request(self, method: str, path: str, json: Any = None) -> dict:

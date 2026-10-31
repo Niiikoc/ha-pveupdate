@@ -151,8 +151,7 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             lines.append(f"**{g.get('app')}**: {g.get('app_installed')} → {g.get('app_latest')}\n")
         lines.append(
             "Installing takes a snapshot first (if enabled for this guest), then runs the app's update. "
-            "OS packages are left to the guest's *Update OS* button, except for community-scripts apps "
-            "installed with apt, whose update upgrades all of the guest's packages."
+            "Other OS packages are left to the guest's *Update OS* button."
         )
         return "\n".join(lines)
 

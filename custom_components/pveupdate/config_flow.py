@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import Busy, CannotConnect, InvalidAuth, PveUpdateApi, PveUpdateError
+from .api import Busy, CannotConnect, InvalidAuth, PveUpdateApi, PveUpdateError, TokenWithoutCertificate
 from .const import CONF_CHECK_INTERVAL, CONF_GUESTS, DEFAULT_CHECK_INTERVAL, DEFAULT_PORT, DOMAIN
 
 
@@ -21,6 +21,8 @@ async def _validate(hass: HomeAssistant, data: Mapping[str, Any]) -> dict[str, s
     try:
         api = PveUpdateApi(async_get_clientsession(hass), data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN])
         await api.get_status()
+    except TokenWithoutCertificate:
+        return {"base": "token_without_certificate"}
     except InvalidAuth:
         return {"base": "invalid_auth"}
     except CannotConnect:

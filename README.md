@@ -35,7 +35,7 @@ The API listens on port 8765 and requires the token for every request. It only a
 
 ### 2. Install the integration
 
-HACS → ⋮ → **Custom repositories** → add `https://github.com/Niiikoc/ha-pveupdate` as *Integration* → install **Proxmox Guest Updates** → restart Home Assistant.
+HACS → search for **Proxmox Guest Updates** → **Download** → restart Home Assistant.
 
 HACS installs the latest [release](https://github.com/Niiikoc/ha-pveupdate/releases) and tells you when a new one is out.
 

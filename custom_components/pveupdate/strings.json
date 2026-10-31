@@ -12,20 +12,34 @@
       },
       "reauth_confirm": {
         "title": "New pveupdate token",
-        "description": "The token was rejected. Get the current one on the host with `pveupdate token`.",
+        "description": "The token was rejected, or the host's certificate no longer matches it. Get the current one on the host with `pveupdate token`.",
+        "data": {
+          "token": "API token"
+        }
+      },
+      "reconfigure": {
+        "title": "New pveupdate token",
+        "description": "Get the current token on the host with `pveupdate token`. With pveupdate 0.8.0 or later it also moves the connection to HTTPS.",
         "data": {
           "token": "API token"
         }
       }
     },
     "error": {
-      "cannot_connect": "Cannot reach pveupdate on that host and port. Is `pveupdate serve` running?",
+      "cannot_connect": "Cannot reach pveupdate on that host and port. Is `pveupdate serve` running? After updating pveupdate, restart it with `systemctl restart pveupdate-serve`.",
       "invalid_auth": "The token was rejected.",
       "unknown": "Unexpected error."
     },
     "abort": {
       "already_configured": "This host is already set up.",
-      "reauth_successful": "Token updated."
+      "reauth_successful": "Token updated.",
+      "reconfigure_successful": "Token updated."
+    }
+  },
+  "issues": {
+    "insecure_http": {
+      "title": "pveupdate connection to {host} is not encrypted",
+      "description": "Home Assistant sends the token for {host} over plain HTTP, so it can be read on your network. Update pveupdate on the host to 0.8.0 or later, run `systemctl restart pveupdate-serve` and `pveupdate token`, then paste the result under the integration's Reconfigure."
     }
   },
   "options": {
@@ -41,6 +55,7 @@
     },
     "error": {
       "cannot_list_guests": "Could not get the guest list from pveupdate. Update pveupdate on the host to 0.6.0 or later, and check `pveupdate serve` is running.",
+      "guests_locked": "Tracked guests can only be changed on the host, because `remote-track` is off there. You can still change the check interval.",
       "busy": "A check or update is running. Try again when it finishes.",
       "unknown": "Unexpected error."
     }

@@ -33,7 +33,7 @@ systemctl daemon-reload && systemctl enable --now pveupdate-serve
 pveupdate token                      # copy this for step 3
 ```
 
-The API listens on port 8765 and requires the token for every request. It only accepts these actions: read status, list the node's guests, choose which are tracked, start a check, and update tracked guests.
+The API listens on port 8765 over HTTPS and requires the token for every request. It only accepts these actions: read status, list the node's guests, choose which are tracked, start a check, and update tracked guests.
 
 ### 2. Install the integration
 
@@ -75,7 +75,10 @@ Replace `192_168_1_10` with your host as it appears in the sensor's entity ID.
 
 ## Notes
 
-- The token is sent over plain HTTP, so keep port 8765 on your LAN (don't port-forward it). Rotate it with `pveupdate token --new`; Home Assistant will ask for the new one.
+- With pveupdate 0.8.0 or newer, `pveupdate token` also prints the fingerprint of the host's certificate, and Home Assistant connects over HTTPS and trusts only that certificate. Tokens from older versions keep working over plain HTTP, and Settings → Repairs tells you how to switch: restart `pveupdate-serve` after updating pveupdate, then paste the new `pveupdate token` output under the integration's ⋮ menu → **Reconfigure**.
+- Allow port 8765 only from Home Assistant's IP in the Proxmox firewall, and don't port-forward it. Home Assistant has no root access to the host, but anyone with the token can start updates on the guests, so turn on encryption for your Home Assistant backups, which contain it.
+- Rotate the token with `pveupdate token --new`. The old one stops working immediately and Home Assistant asks for the new one. It also asks if the host's certificate changes.
+- `pveupdate set default --remote-track off` on the host limits the token to the guests you chose there; Home Assistant then can't change them (needs pveupdate 0.8.0 or newer).
 - Update output goes to `/var/log/pveupdate.log` on the host.
 - Each guest's picture comes from the [selfh.st icon set](https://selfh.st/icons), matched by app or guest name (e.g. *zigbee2mqtt*, *mariadb*), then by OS (*debian*). Guests with no match use the integration's icon, which needs Home Assistant 2026.3 or newer.
 - If a guest can't be snapshotted (storage without snapshot support), pveupdate takes a `vzdump` backup instead and then updates. If that fails too, the guest is skipped and the update entity shows why.

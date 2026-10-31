@@ -28,17 +28,26 @@ class PveUpdateApi:
     """Talks to `pveupdate serve`."""
 
     def __init__(self, session: aiohttp.ClientSession, host: str, port: int, token: str) -> None:
+        # `pveupdate token` prints "<token>.<certificate fingerprint>". A token
+        # alone comes from before pveupdate 0.8.0 and means plain HTTP.
+        token, _, fingerprint = token.partition(".")
+        try:
+            self._ssl = aiohttp.Fingerprint(bytes.fromhex(fingerprint)) if fingerprint else True
+        except ValueError as err:
+            raise InvalidAuth("malformed token") from err
         self._session = session
-        self._base = f"http://{host}:{port}/api"
+        self._base = f"{'https' if fingerprint else 'http'}://{host}:{port}/api"
         self._headers = {"Authorization": f"Bearer {token}"}
 
     async def _request(self, method: str, path: str, json: Any = None) -> dict:
         try:
             async with asyncio.timeout(15):
                 resp = await self._session.request(
-                    method, f"{self._base}/{path}", headers=self._headers, json=json
+                    method, f"{self._base}/{path}", headers=self._headers, json=json, ssl=self._ssl
                 )
                 data = await resp.json(content_type=None)
+        except aiohttp.ServerFingerprintMismatch as err:
+            raise InvalidAuth("the host's certificate does not match the token") from err
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
             raise CannotConnect(str(err)) from err
         if resp.status == 401:

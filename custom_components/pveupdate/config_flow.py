@@ -18,8 +18,8 @@ from .const import CONF_CHECK_INTERVAL, CONF_GUESTS, DEFAULT_CHECK_INTERVAL, DEF
 
 
 async def _validate(hass: HomeAssistant, data: Mapping[str, Any]) -> dict[str, str]:
-    api = PveUpdateApi(async_get_clientsession(hass), data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN])
     try:
+        api = PveUpdateApi(async_get_clientsession(hass), data[CONF_HOST], data[CONF_PORT], data[CONF_TOKEN])
         await api.get_status()
     except InvalidAuth:
         return {"base": "invalid_auth"}
@@ -54,7 +54,14 @@ class PveUpdateConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        entry = self._get_reauth_entry()
+        return await self._async_new_token("reauth_confirm", self._get_reauth_entry(), user_input)
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return await self._async_new_token("reconfigure", self._get_reconfigure_entry(), user_input)
+
+    async def _async_new_token(
+        self, step_id: str, entry: ConfigEntry, user_input: dict[str, Any] | None
+    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
             data = {**entry.data, CONF_TOKEN: user_input[CONF_TOKEN]}
@@ -62,7 +69,7 @@ class PveUpdateConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 return self.async_update_reload_and_abort(entry, data=data)
         return self.async_show_form(
-            step_id="reauth_confirm",
+            step_id=step_id,
             data_schema=vol.Schema({vol.Required(CONF_TOKEN): str}),
             errors=errors,
         )
@@ -79,11 +86,14 @@ class PveUpdateOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         api = self.config_entry.runtime_data.api
         errors: dict[str, str] = {}
-        try:
-            guests = await api.get_guests()
-        except PveUpdateError:
-            guests = None
-            errors["base"] = "cannot_list_guests"
+        guests = None
+        if self.config_entry.runtime_data.data.get("remote_track") is False:
+            errors["base"] = "guests_locked"
+        else:
+            try:
+                guests = await api.get_guests()
+            except PveUpdateError:
+                errors["base"] = "cannot_list_guests"
 
         if user_input is not None and guests is not None:
             chosen = user_input.pop(CONF_GUESTS, None)
@@ -106,7 +116,7 @@ class PveUpdateOptionsFlow(OptionsFlow):
             if not errors:
                 return self.async_create_entry(data=user_input)
         elif user_input is not None:
-            # Host unreachable: still save the interval.
+            # No guest list (host unreachable or guests locked): still save the interval.
             user_input.pop(CONF_GUESTS, None)
             return self.async_create_entry(data=user_input)
 

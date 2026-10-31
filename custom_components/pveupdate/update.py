@@ -85,9 +85,8 @@ class GuestUpdate(GuestEntity, UpdateEntity):
 
     @property
     def installed_version(self) -> str | None:
-        # Apps whose version can't be read show the guest's OS version instead.
-        g = self.guest
-        return g.get("app_installed") or g.get("os") or "unknown"
+        # This entity is about the app; the OS version is on the OS updates sensor.
+        return self.guest.get("app_installed") or "unknown"
 
     @property
     def latest_version(self) -> str | None:
@@ -147,7 +146,8 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             lines.append(f"**{g.get('app')}**: {g.get('app_installed')} → {g.get('app_latest')}\n")
         lines.append(
             "Installing takes a snapshot first (if enabled for this guest), then runs the app's update. "
-            "OS packages are not touched; use the guest's *Update OS* button for those."
+            "OS packages are left to the guest's *Update OS* button, except for apps installed with apt, "
+            "whose update upgrades all of the guest's packages."
         )
         return "\n".join(lines)
 

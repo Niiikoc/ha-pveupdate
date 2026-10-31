@@ -107,7 +107,7 @@ async def test_entities(hass: HomeAssistant, aioclient_mock):
     m = hass.states.get("update.mqtt")
     assert m.state == "off"  # OS packages pending, but no app update
     assert m.attributes["installed_version"] == "2.0.18"
-    assert hass.states.get("update.mariadb").attributes["installed_version"] == "unknown"  # no app or OS version
+    assert hass.states.get("update.mariadb").attributes["installed_version"] == "unknown"  # no app version
     assert hass.states.get("update.plain") is None  # no app
     assert hass.states.get("sensor.proxmox_pve_local_guests_with_updates").state == "1"
     assert hass.states.get("sensor.proxmox_pve_local_activity").state == "idle"
@@ -143,11 +143,11 @@ async def test_update_os_button(hass: HomeAssistant, aioclient_mock):
 
 
 async def test_unknown_app_version(hass: HomeAssistant, aioclient_mock):
-    """An app whose version can't be read shows the OS version and can be updated with its button."""
+    """An app whose version can't be read shows as unknown, not the OS version, and can be updated with its button."""
     st = status()
     st["guests"]["101"].update(app_installed=None, app_latest=None)
     await setup(hass, aioclient_mock, st)
-    assert hass.states.get("update.mqtt").attributes["installed_version"] == "Debian 12.11"
+    assert hass.states.get("update.mqtt").attributes["installed_version"] == "unknown"
     aioclient_mock.post(f"{BASE}/update", status=202, json={"started": "update", "guests": ["101"]})
     await hass.services.async_call("button", "press", {"entity_id": "button.mqtt_update_app"}, blocking=True)
     posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]

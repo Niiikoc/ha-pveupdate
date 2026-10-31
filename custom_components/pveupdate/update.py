@@ -95,6 +95,11 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             return g["app_latest"]
         return self.installed_version
 
+    def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
+        # The host decides. Home Assistant reads 2.0.18-1+deb12u2 as no newer than
+        # 2.0.18-1+deb12u1, which would hide what the host counts as an update.
+        return bool(self.guest.get("app_update"))
+
     @property
     def release_summary(self) -> str | None:
         g = self.guest
@@ -146,8 +151,8 @@ class GuestUpdate(GuestEntity, UpdateEntity):
             lines.append(f"**{g.get('app')}**: {g.get('app_installed')} → {g.get('app_latest')}\n")
         lines.append(
             "Installing takes a snapshot first (if enabled for this guest), then runs the app's update. "
-            "OS packages are left to the guest's *Update OS* button, except for apps installed with apt, "
-            "whose update upgrades all of the guest's packages."
+            "OS packages are left to the guest's *Update OS* button, except for community-scripts apps "
+            "installed with apt, whose update upgrades all of the guest's packages."
         )
         return "\n".join(lines)
 

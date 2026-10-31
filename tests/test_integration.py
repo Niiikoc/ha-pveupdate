@@ -125,6 +125,14 @@ async def test_entities(hass: HomeAssistant, aioclient_mock):
     assert hass.states.get("button.plain_update_app") is None
 
 
+async def test_debian_revision_is_an_update(hass: HomeAssistant, aioclient_mock):
+    """The host decides what is newer, also for versions Home Assistant can't order."""
+    st = status()
+    st["guests"]["101"].update(app_installed="2.0.18-1+deb12u1", app_latest="2.0.18-1+deb12u2", app_update=True)
+    await setup(hass, aioclient_mock, st)
+    assert hass.states.get("update.mqtt").state == "on"
+
+
 async def test_install(hass: HomeAssistant, aioclient_mock):
     await setup(hass, aioclient_mock)
     aioclient_mock.post(f"{BASE}/update", status=202, json={"started": "update", "guests": ["105"]})
